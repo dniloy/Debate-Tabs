@@ -10,8 +10,7 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from typing import List, Dict, Tuple
 
 
-def scrape_motions(tournament_name: str, url: str, driver: webdriver.Edge)\
-        -> None:
+def scrape_motions(tournament_name: str, url: str, driver: webdriver.Edge) -> None:
     """Given a filepath containing tournament name and basic URL, extracts data each round on
     motion and infoslide."""
     driver.get(url)  # load website
@@ -31,29 +30,34 @@ def scrape_motions(tournament_name: str, url: str, driver: webdriver.Edge)\
 
 def choose_scraper(soup: BeautifulSoup, tournament_name: str, url: str) -> Tuple[List, List, List]:
     """Choose the scraper to use based on the website then return the columns"""
+    # choose the scraper by setting the appropriate values of these three variables
+    # based on the if-else cases
+    rounds_tag, round_name_tag, motion_text_tag = ('', {}), ('', {}), ('', {})
+
     if 'calico' in url:  # if calico tab website
-        if 'statistics' in url:
+        if 'statistics' in url:  # if it's a motion statistics URL
             rounds_tag = ('div', {'class': 'list-group mt-3'})
             round_name_tag = ('span', {'class': 'badge badge-secondary'})
             motion_text_tag = ('h4', {'class': 'mb-3 mt-1'})
-        else:
+        else:  # if it's a motions tab URL
             rounds_tag = ('div', {'class': 'list-group list-group-flush'})
             round_name_tag = ('h4', {'class': 'card-title mt-0 mb-2 d-inline-block'})
             motion_text_tag = ('div', {'class': 'mr-auto pr-3 lead'})
     else:  # if herokuapp website
-        if 'statistics' in url:
+        if 'statistics' in url:  # if it's a motion statistics URL
             rounds_tag = ('div', {'class': 'list-group mt-3'})
             round_name_tag = ('span', {'class': 'badge badge-secondary'})
             motion_text_tag = ('h4', {'class': 'mb-4 mt-2'})
-        else:
+        else:  # if it's a motions tab URL
             rounds_tag = ('div', {'class': 'card mt-3'})
             round_name_tag = ('h4', {'class': 'card-title mt-0 mb-2 d-inline-block'})
             motion_text_tag = ('div', {'class': 'mr-auto pr-3 lead'})
-    return scrape(soup, rounds_tag, round_name_tag, motion_text_tag)
+    return scrape_rounds(soup, rounds_tag, round_name_tag, motion_text_tag)
 
 
-def scrape(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[str, dict],
-           motion_text_tag: Tuple[str, dict]):
+def scrape_rounds(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[str, dict],
+                  motion_text_tag: Tuple[str, dict]):
+    """For the given motions page, return the round names, infoslides and motions as three lists."""
     rounds = soup.findAll(*rounds_tag)
     round_names, info_slides, motions = [], [], []
     for round in rounds:  # search list of rounds
@@ -65,7 +69,7 @@ def scrape(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[str, di
         motions.append(round.findAll(*motion_text_tag)[0].text.strip())
 
         # search for anything that could be an infoslide
-        infoslide_elements = round.findAll('div', {'class': 'modal-body lead'})
+        infoslide_elements = round.findAll('div', {'class': 'modal-body'})
         if len(infoslide_elements) > 0:  # if there is an infoslide, add it
             # collect the paragraphs in the infoslide
             infoslide_text = str.join('\n', [paragraph.text.strip()
@@ -77,14 +81,22 @@ def scrape(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[str, di
     return round_names, info_slides, motions
 
 
-if __name__ == '__main__':
+def test_scrapers() -> None:
+    """Test each scraper."""
     s = Service(EdgeChromiumDriverManager().install())  # get the latest Edge driver for Selenium
     driver = webdriver.Edge(service=s)  # prepare the browser window
+
+    # websites corresponding to each scraper.
+    scrape_motions("HHIV 2020", "https://hhiv2020.calicotab.com/hhiv2020/motions/", driver)
     scrape_motions("NAUDC 2020", 'https://naudc2021.calicotab.com/_/motions/statistics/', driver)
-    scrape_motions("HHIV 2020",
-                   'https://hhiv2020.calicotab.com/hhiv2020/motions/statistics/', driver)
-    scrape_motions("HHIV 2019",
-                   "https://hhiv2020.calicotab.com/hhiv2020/motions/", driver)
     scrape_motions("Chancellor's 2019",
                    'https://chancellors2019.herokuapp.com/chancellors2019/motions/', driver)
+    scrape_motions("Yale IV 2018",
+                   "https://yaleiv2018.herokuapp.com/yaleiv2018/motions/statistics/", driver)
+
     driver.close()
+
+
+if __name__ == '__main__':
+    # test_scrapers()
+    print("motion scraper script run")
