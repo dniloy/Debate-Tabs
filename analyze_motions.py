@@ -33,7 +33,33 @@ def generate_motion_statistics(tournament_name: str) -> None:
     motions_df.to_csv(tournament_name + ' - Motions Tab.csv')
 
 
-def calculate_round_positions(teams_df: pd.DataFrame, motions_df: pd.DataFrame, round: str)\
+def calculate_round_positions(teams_df: pd.DataFrame, motions_df: pd.DataFrame, round: str) \
+        -> List[int]:
+    """Return a list containing the total scores that each position (e.g. OG) achieved in the given
+    round."""
+    scores = [0, 0, 0, 0]  # four indices for four positions
+
+    # each row corresponds to a team
+    for index, row in teams_df.iterrows():
+        # if the team didn't partake in the round
+        # TODO: what if the round name is not in the teams csv?
+        if round not in row or row['Team'] not in row[round]:
+            continue
+        # calculating the team's score
+        score = int(row[round][-1])
+        # splitting the round data by team position e.g. by the string '(OG)'
+        # remove last item, which is round results
+        teams_in_debate = re.split(r'\([OC][GO]\)', row[round])[:-1]
+        teams_in_debate = [team.strip() for team in teams_in_debate]
+
+        # add the team's score to the list
+        team_position = teams_in_debate.index(row['Team'])
+        scores[team_position] = scores[team_position] + score
+
+    return scores
+
+
+def calculate_round_positions2(teams_df: pd.DataFrame, motions_df: pd.DataFrame, round: str)\
         -> List[int]:
     """Return a list containing the total scores that each position (e.g. OG) achieved in the given
     round."""

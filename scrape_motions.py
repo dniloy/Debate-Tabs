@@ -1,34 +1,63 @@
 """Scrapes motions tabs. Not Motion statistics tabs."""
 
-from bs4 import BeautifulSoup
 import pandas as pd
-import re
+import os.path
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 from typing import List, Dict, Tuple
+from pathlib import Path
+from urllib.parse import urljoin
 
 
-def scrape_motions(tournament_name: str, url: str, driver: webdriver.Edge) -> None:
-    """Given a filepath containing tournament name and basic URL, extracts data each round on
+def save_all_motions(tournament_name: str, base_url: str, driver: webdriver.Edge) -> None:
+    """Saves in a csv file all motions from the given tournament"""
+    filepath = Path('scraped_data/' + tournament_name + ' - Motions.csv')
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    if os.path.exists(filepath):
+        return
+
+    df = scrape_motions(base_url, driver)
+    if df.empty:
+        return
+
+    df.to_csv(filepath)  # save as csv
+
+
+def scrape_motions(base_url: str, driver: webdriver.Edge) -> pd.DataFrame:
+    """Given a filepath containing tournament name and basic URL, extracts each round's name,
     motion and infoslide."""
-    driver.get(url)  # load website
+    valid_url = get_valid_motions_url(base_url, driver)
+    if valid_url == '':
+        return pd.DataFrame()
+
+    driver.get(valid_url)  # load website
     soup = BeautifulSoup(driver.page_source, features="html.parser")  # feed HTML into bs4
 
-    round_names, info_slides, motions = choose_scraper(soup, tournament_name, url)
+    round_names, info_slides, motions = choose_scraper(soup, valid_url)
 
     # create a dataframe out of this data
     df = pd.DataFrame()
     df['Round'] = round_names
     df['Info Slide'] = info_slides
     df['Motion'] = motions
-    df.reset_index(drop=True, inplace=True)
 
-    df.to_csv(tournament_name + ' - Motions.csv')  # save dataframe to CSV
+    return df
 
 
-def choose_scraper(soup: BeautifulSoup, tournament_name: str, url: str) -> Tuple[List, List, List]:
+def get_valid_motions_url(base_url: str, driver: webdriver.Edge) -> str:
+    """Returns a valid speaker tab if the given URl leads to one, and returns '' otherwise."""
+    driver.get(base_url)  # doing this means that we no longer need to use the URL in the caller
+    soup = BeautifulSoup(driver.page_source, features="html.parser")
+
+    for a in soup.findAll('a', {'class': 'nav-link'}):
+        if 'motions' in a['href']:
+            return urljoin(base_url, a['href'])
+    return ''
+
+
+def choose_scraper(soup: BeautifulSoup, url: str) -> Tuple[List, List, List]:
     """Choose the scraper to use based on the website then return the columns"""
     # choose the scraper by setting the appropriate values of these three variables
     # based on the if-else cases
@@ -39,26 +68,34 @@ def choose_scraper(soup: BeautifulSoup, tournament_name: str, url: str) -> Tuple
             rounds_tag = ('div', {'class': 'list-group mt-3'})
             round_name_tag = ('span', {'class': 'badge badge-secondary'})
             motion_text_tag = ('h4', {'class': 'mb-3 mt-1'})
-        else:  # if it's a motions tab URL
+            # motion_text_tag = ('h4',)
+        elif 'motion' in url:  # if it's a motions tab URL
             rounds_tag = ('div', {'class': 'list-group list-group-flush'})
             round_name_tag = ('h4', {'class': 'card-title mt-0 mb-2 d-inline-block'})
             motion_text_tag = ('div', {'class': 'mr-auto pr-3 lead'})
-    else:  # if herokuapp website
+
+        return scrape_rounds(soup, rounds_tag, round_name_tag, motion_text_tag)
+    elif 'heroku' in url:  # if herokuapp website
         if 'statistics' in url:  # if it's a motion statistics URL
             rounds_tag = ('div', {'class': 'list-group mt-3'})
             round_name_tag = ('span', {'class': 'badge badge-secondary'})
             motion_text_tag = ('h4', {'class': 'mb-4 mt-2'})
-        else:  # if it's a motions tab URL
+            # motion_text_tag = ('h4',)
+        elif 'motion' in url:  # if it's a motions tab URL
             rounds_tag = ('div', {'class': 'card mt-3'})
             round_name_tag = ('h4', {'class': 'card-title mt-0 mb-2 d-inline-block'})
             motion_text_tag = ('div', {'class': 'mr-auto pr-3 lead'})
-    return scrape_rounds(soup, rounds_tag, round_name_tag, motion_text_tag)
+
+        return scrape_rounds(soup, rounds_tag, round_name_tag, motion_text_tag)
+
+    return [], [], []  # if the URL is invalid
 
 
 def scrape_rounds(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[str, dict],
                   motion_text_tag: Tuple[str, dict]):
     """For the given motions page, return the round names, infoslides and motions as three lists."""
     rounds = soup.findAll(*rounds_tag)
+    # if there are no motions data, then I think empty data is returned?
     round_names, info_slides, motions = [], [], []
     for round in rounds:  # search list of rounds
         # get round name
@@ -66,7 +103,12 @@ def scrape_rounds(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[
         round_names.append(round_name)
 
         # search for the motion text
-        motions.append(round.findAll(*motion_text_tag)[0].text.strip())
+        print(rounds_tag, round_name_tag, motion_text_tag)
+        motion_elements = round.findAll(*motion_text_tag)
+        if len(motion_elements) == 0:
+            motions.append('')
+        else:
+            motions.append(motion_elements[0].text.strip())
 
         # search for anything that could be an infoslide
         infoslide_elements = round.findAll('div', {'class': 'modal-body'})
@@ -83,20 +125,19 @@ def scrape_rounds(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[
 
 def test_scrapers() -> None:
     """Test each scraper."""
-    s = Service(EdgeChromiumDriverManager().install())  # get the latest Edge driver for Selenium
-    driver = webdriver.Edge(service=s)  # prepare the browser window
+    s = Service('C:\\Users\\Dell\\.wdm\\drivers\\edgedriver\\win64\\98.0.1108.62\\msedgedriver.exe')
+    driver = webdriver.Edge(service=s)
 
     # websites corresponding to each scraper.
-    scrape_motions("HHIV 2020", "https://hhiv2020.calicotab.com/hhiv2020/motions/", driver)
-    scrape_motions("NAUDC 2020", 'https://naudc2021.calicotab.com/_/motions/statistics/', driver)
-    scrape_motions("Chancellor's 2019",
-                   'https://chancellors2019.herokuapp.com/chancellors2019/motions/', driver)
-    scrape_motions("Yale IV 2018",
-                   "https://yaleiv2018.herokuapp.com/yaleiv2018/motions/statistics/", driver)
+    # print(scrape_motions("https://hhiv2020.calicotab.com/hhiv2020/", driver))
+    # print(scrape_motions('https://naudc2021.calicotab.com/', driver))
+    # print(scrape_motions('https://chancellors2019.herokuapp.com/', driver))
+    # print(scrape_motions('https://yaleiv2018.herokuapp.com/', driver))
+    print(scrape_motions('https://salty-wildwood-56548.herokuapp.com/Anudc19/motions/', driver))
 
     driver.close()
 
 
 if __name__ == '__main__':
-    # test_scrapers()
+    test_scrapers()
     print("motion scraper script run")
