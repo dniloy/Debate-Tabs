@@ -18,14 +18,19 @@ def save_all_results(tournament_name: str, base_url: str, driver: webdriver.Edge
     if os.path.exists(filepath):
         return
 
-    df = scrape_all_results(base_url, driver)
-    if df.empty:
+    rounds_dfs = scrape_all_results(base_url, driver)
+    if rounds_dfs == []:
         return
 
-    df.to_csv(filepath)  # save as csv
+    # concatenate the results into one dataframe
+    rounds_df = pd.DataFrame()  # the df onto which all rounds_dfs will be appended
+    for round_df in rounds_dfs:  # for each round's df, append
+        rounds_df = pd.DataFrame.append(self=rounds_df, other=round_df, ignore_index=True)
+
+    rounds_df.to_csv(filepath)  # save as csv
 
 
-def scrape_all_results(tournament_url: str, driver: webdriver.Edge) -> pd.DataFrame:
+def scrape_all_results(tournament_url: str, driver: webdriver.Edge) -> List[pd.DataFrame]:
     """Return a single dataframe containing scraped results data from all rounds at the given
     tournament URL.
 
@@ -37,7 +42,7 @@ def scrape_all_results(tournament_url: str, driver: webdriver.Edge) -> pd.DataFr
     # Find all results links. Note: if there are none, an empty dataframe is returned.
     round_menu = soup.findAll('div', {'class': 'dropdown-menu', 'aria-labelledby': 'roundsDrop'})
     if len(round_menu) == 0:
-        return pd.DataFrame()
+        return []
     else:
         rounds = round_menu[0].findAll('a', {'class': 'dropdown-item'})
 
@@ -47,12 +52,7 @@ def scrape_all_results(tournament_url: str, driver: webdriver.Edge) -> pd.DataFr
         result_url = urljoin(tournament_url, round['href'])  # get the full url for the results page
         rounds_dfs.append(scrape_results(result_url, driver))  # append scraped results data
 
-    # concatenate the results into one dataframe
-    df = pd.DataFrame()
-    for round_df in rounds_dfs:
-        df = pd.DataFrame.append(self=df, other=round_df, ignore_index=True)
-
-    return df
+    return rounds_dfs
 
 
 def scrape_results(results_url: str, driver: webdriver.Edge) -> pd.DataFrame:

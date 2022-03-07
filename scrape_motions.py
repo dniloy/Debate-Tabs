@@ -103,7 +103,7 @@ def scrape_rounds(soup: BeautifulSoup, rounds_tag: tuple, round_name_tag: Tuple[
         round_names.append(round_name)
 
         # search for the motion text
-        print(rounds_tag, round_name_tag, motion_text_tag)
+        # print(rounds_tag, round_name_tag, motion_text_tag)
         motion_elements = round.findAll(*motion_text_tag)
         if len(motion_elements) == 0:
             motions.append('')
