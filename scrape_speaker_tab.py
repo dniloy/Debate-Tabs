@@ -38,7 +38,11 @@ def scrape_speaker_tab(url: str, driver: webdriver.Edge) -> pd.DataFrame:
     driver.get(valid_url)  # load results url
     soup = BeautifulSoup(driver.page_source, features="html.parser")
 
-    table = soup.find('div', {'class': 'table-responsive-md'})  # find table
+    # find table
+    tables = soup.findAll('div', {'class': 'table-responsive-md'})  # find table
+    if len(tables) == 0:  # if there is no div tag with the table, find a table tag
+        tables = soup.findAll('table', {'class': 'table-responsive-md'})
+    table = tables[0]
     table_headers = get_table_headers(table)  # find table headers
 
     names, teams, categories, rounds_speaks = [], [], [], []
