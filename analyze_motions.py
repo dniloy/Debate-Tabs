@@ -1,7 +1,11 @@
 """A script to create motions statistics CSV files for individual tournaments."""
 import pandas as pd
 import re
-from typing import List
+import os
+
+from nltk.corpus import stopwords
+from pathlib import Path
+from typing import List, Tuple
 
 
 def generate_motion_statistics(tournament_name: str) -> None:
@@ -33,57 +37,42 @@ def generate_motion_statistics(tournament_name: str) -> None:
     motions_df.to_csv(tournament_name + ' - Motions Tab.csv')
 
 
-def calculate_round_positions(teams_df: pd.DataFrame, motions_df: pd.DataFrame, round: str) \
-        -> List[int]:
-    """Return a list containing the total scores that each position (e.g. OG) achieved in the given
-    round."""
-    scores = [0, 0, 0, 0]  # four indices for four positions
+def get_motions_dfs(folder: str) -> List[pd.DataFrame]:
+    motions_dfs = []
 
-    # each row corresponds to a team
-    for index, row in teams_df.iterrows():
-        # if the team didn't partake in the round
-        # TODO: what if the round name is not in the teams csv?
-        if round not in row or row['Team'] not in row[round]:
-            continue
-        # calculating the team's score
-        score = int(row[round][-1])
-        # splitting the round data by team position e.g. by the string '(OG)'
-        # remove last item, which is round results
-        teams_in_debate = re.split(r'\([OC][GO]\)', row[round])[:-1]
-        teams_in_debate = [team.strip() for team in teams_in_debate]
+    for file in os.listdir(folder):  # iterate through all the scraped data
+        if file[-14:] == ' - Motions.csv':  # if results file
+            # find the file's filepath and get the dataframe
+            filepath = Path(folder + file)
+            motions_df = pd.read_csv(filepath)
+            motions_dfs.append(motions_df)
 
-        # add the team's score to the list
-        team_position = teams_in_debate.index(row['Team'])
-        scores[team_position] = scores[team_position] + score
-
-    return scores
+    return motions_dfs
 
 
-def calculate_round_positions2(teams_df: pd.DataFrame, motions_df: pd.DataFrame, round: str)\
-        -> List[int]:
-    """Return a list containing the total scores that each position (e.g. OG) achieved in the given
-    round."""
-    scores = [0, 0, 0, 0]  # four indices for four positions
+def analyze_motions_frequency(motions_dfs: List[pd.DataFrame]) -> pd.DataFrame:
+    info_slide_words = {}
+    motion_words = {}
+    for motions_df in motions_dfs:
+        texts = motions_df['Info Slide'] + motions_df['Motion']
+        for motion in texts:
+            for word in str(motion).split():
+                cleaned_word = re.sub(r'\W+', '', word).lower()
+                if cleaned_word in stopwords.words('english'):
+                    continue
+                if cleaned_word in info_slide_words:
+                    info_slide_words[cleaned_word] += 1
+                else:
+                    info_slide_words[cleaned_word] = 1
 
-    # each row corresponds to a team
-    for index, row in teams_df.iterrows():
-        # if the team didn't partake in the round
-        # TODO: what if the round name is not in the teams csv?
-        if round not in row or row['Team'] not in row[round]:
-            continue
-        # calculating the team's score
-        score = int(row[round][-1])
-        # splitting the round data by team position e.g. by the string '(OG)'
-        # remove last item, which is round results
-        teams_in_debate = re.split(r'\([OC][GO]\)', row[round])[:-1]
-        teams_in_debate = [team.strip() for team in teams_in_debate]
+    df = pd.DataFrame(info_slide_words.items()).append(pd.DataFrame(motion_words.items()))
+    df.columns = ['Word', 'Count']
+    df = df.sort_values('Count', ascending=False)
 
-        # add the team's score to the list
-        team_position = teams_in_debate.index(row['Team'])
-        scores[team_position] = scores[team_position] + score
-
-    return scores
+    return df
 
 
 if __name__ == '__main__':
-    generate_motion_statistics('HHIV 2020')
+    motions_dfs = get_motions_dfs('scraped_data/')
+    df = analyze_motions_frequency(motions_dfs)
+    print(df)
